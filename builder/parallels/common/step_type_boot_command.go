@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	packer_common "github.com/hashicorp/packer/common"
@@ -84,7 +85,8 @@ func (s *StepTypeBootCommand) Run(ctx context.Context, state multistep.StateBag)
 	d := bootcommand.NewPCXTDriver(sendCodes, -1)
 
 	ui.Say("Typing the boot command...")
-	for i, command := range s.BootCommand {
+	var cmd []string
+	for _, command := range s.BootCommand {
 		command, err := interpolate.Render(command, &s.Ctx)
 		if err != nil {
 			err = fmt.Errorf("Error preparing boot command: %s", err)
@@ -92,25 +94,27 @@ func (s *StepTypeBootCommand) Run(ctx context.Context, state multistep.StateBag)
 			ui.Error(err.Error())
 			return multistep.ActionHalt
 		}
+		cmd = append(cmd, command)
 
-		seq, err := bootcommand.GenerateExpressionSequence(command)
-		if err != nil {
-			err := fmt.Errorf("Error generating boot command: %s", err)
-			state.Put("error", err)
-			ui.Error(err.Error())
-			return multistep.ActionHalt
-		}
+	}
+	command := strings.Join(cmd, "")
+	seq, err := bootcommand.GenerateExpressionSequence(command)
+	if err != nil {
+		err := fmt.Errorf("Error generating boot command: %s", err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+		return multistep.ActionHalt
+	}
 
-		if err := seq.Do(ctx, d); err != nil {
-			err := fmt.Errorf("Error running boot command: %s", err)
-			state.Put("error", err)
-			ui.Error(err.Error())
-			return multistep.ActionHalt
-		}
+	if err := seq.Do(ctx, d); err != nil {
+		err := fmt.Errorf("Error running boot command: %s", err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+		return multistep.ActionHalt
+	}
 
-		if pauseFn != nil {
-			pauseFn(multistep.DebugLocationAfterRun, fmt.Sprintf("boot_command[%d]: %s", i, command), state)
-		}
+	if pauseFn != nil {
+		pauseFn(multistep.DebugLocationAfterRun, fmt.Sprintf("boot_command: %s", command), state)
 	}
 
 	return multistep.ActionContinue
